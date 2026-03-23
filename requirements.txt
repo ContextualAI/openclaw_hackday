@@ -1,4 +1,4 @@
 contextual-client
 python-dotenv
 requests
-anthropic
+openai

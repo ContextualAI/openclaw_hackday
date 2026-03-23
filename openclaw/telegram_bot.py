@@ -1,30 +1,30 @@
 """
-OpenClaw Telegram Agent — Claude-powered assistant with tools.
+OpenClaw Telegram Agent — ChatGPT-powered assistant with tools.
 
 Tools available:
   - brave_search: Search the live web for anything
   - query_sec_filings: Query your Contextual AI SEC filing datastore
 
-Claude decides which tools to use (or none) based on the question.
+ChatGPT decides which tools to use (or none) based on the question.
 """
 
 import os
 import json
 import time
 import requests
-import anthropic
+from openai import OpenAI
 
 # --- Config ---
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
-ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 CONTEXTUAL_API_KEY = os.environ["CONTEXTUAL_API_KEY"]
 AGENT_ID = os.environ["AGENT_ID"]
 BRAVE_API_KEY = os.environ["BRAVE_API_KEY"]
 
 CONTEXTUAL_BASE = "https://api.contextual.ai/v1"
 
-claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 SYSTEM_PROMPT = """You are OpenClaw, a helpful AI assistant that specializes in SEC filings, \
 financial analysis, and general research. You have access to tools that let you:
@@ -38,42 +38,48 @@ For general knowledge questions, you can answer directly without tools.
 Keep responses concise and well-formatted. When citing SEC filings, include the company name, \
 filing type, and date when available."""
 
-# --- Tool definitions for Claude ---
+# --- Tool definitions for ChatGPT ---
 TOOLS = [
     {
-        "name": "brave_search",
-        "description": "Search the live web using Brave Search. Use this for current events, "
-        "news, prices, company info, or anything that needs up-to-date information.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "The search query",
+        "type": "function",
+        "function": {
+            "name": "brave_search",
+            "description": "Search the live web using Brave Search. Use this for current events, "
+            "news, prices, company info, or anything that needs up-to-date information.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query",
+                    },
+                    "count": {
+                        "type": "integer",
+                        "description": "Number of results (default 5, max 20)",
+                        "default": 5,
+                    },
                 },
-                "count": {
-                    "type": "integer",
-                    "description": "Number of results (default 5, max 20)",
-                    "default": 5,
-                },
+                "required": ["query"],
             },
-            "required": ["query"],
         },
     },
     {
-        "name": "query_sec_filings",
-        "description": "Query the SEC filing database for information about recent filings, "
-        "regulatory changes, compliance risks, 8-K, 10-K, 10-Q, proxy statements, "
-        "and other SEC documents that have been scraped and indexed.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "question": {
-                    "type": "string",
-                    "description": "The question to ask about SEC filings",
+        "type": "function",
+        "function": {
+            "name": "query_sec_filings",
+            "description": "Query the SEC filing database for information about recent filings, "
+            "regulatory changes, compliance risks, 8-K, 10-K, 10-Q, proxy statements, "
+            "and other SEC documents that have been scraped and indexed.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The question to ask about SEC filings",
+                    },
                 },
+                "required": ["question"],
             },
-            "required": ["question"],
         },
     },
 ]
@@ -119,42 +125,46 @@ def run_tool(name: str, input_data: dict) -> str:
         return f"Unknown tool: {name}"
 
 
-# --- Claude agent loop ---
+# --- ChatGPT agent loop ---
 def ask_openclaw(user_message: str) -> str:
-    """Send a message to Claude with tools, handle tool calls, return final answer."""
-    messages = [{"role": "user", "content": user_message}]
+    """Send a message to ChatGPT with tools, handle tool calls, return final answer."""
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_message},
+    ]
 
     # Allow up to 5 tool-use rounds
     for _ in range(5):
-        response = claude.messages.create(
-            model="claude-sonnet-4-20250514",
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
             max_tokens=4096,
-            system=SYSTEM_PROMPT,
             tools=TOOLS,
             messages=messages,
         )
 
-        # If Claude is done (no tool use), extract the text
-        if response.stop_reason == "end_turn":
-            text_parts = [b.text for b in response.content if b.type == "text"]
-            return "\n".join(text_parts)
+        choice = response.choices[0]
+
+        # If ChatGPT is done (no tool calls), return the text
+        if choice.finish_reason == "stop" or not choice.message.tool_calls:
+            return choice.message.content or ""
+
+        # Append the assistant message (with tool_calls) to the conversation
+        messages.append(choice.message)
 
         # Process tool calls
-        tool_results = []
-        for block in response.content:
-            if block.type == "tool_use":
-                print(f"  Tool call: {block.name}({json.dumps(block.input)[:100]})")
-                try:
-                    result = run_tool(block.name, block.input)
-                except Exception as e:
-                    result = f"Tool error: {e}"
-                tool_results.append(
-                    {"type": "tool_result", "tool_use_id": block.id, "content": result}
-                )
-
-        # Feed tool results back to Claude
-        messages.append({"role": "assistant", "content": response.content})
-        messages.append({"role": "user", "content": tool_results})
+        for tool_call in choice.message.tool_calls:
+            fn_name = tool_call.function.name
+            fn_args = json.loads(tool_call.function.arguments)
+            print(f"  Tool call: {fn_name}({json.dumps(fn_args)[:100]})")
+            try:
+                result = run_tool(fn_name, fn_args)
+            except Exception as e:
+                result = f"Tool error: {e}"
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": result,
+            })
 
     return "I ran out of steps trying to answer your question. Try being more specific."
 
@@ -181,7 +191,7 @@ def get_updates(offset=None):
 
 # --- Main loop ---
 def main():
-    print("OpenClaw agent starting (Claude + Brave + SEC filings)...")
+    print("OpenClaw agent starting (ChatGPT + Brave + SEC filings)...")
 
     last_update_id = None
     existing = get_updates()
