@@ -1,0 +1,15 @@
+services:
+  openclaw:
+    build: ./openclaw
+    env_file: .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
+  telegram-bot:
+    build: ./openclaw
+    env_file: .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["python", "telegram_bot.py"]
+    restart: unless-stopped

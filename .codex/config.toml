@@ -1,0 +1,15 @@
+# Codex project-level configuration for SEC Filing Sentinel
+#
+# To use: trust this project with `codex trust` from the project root.
+# MCP servers below give Codex access to library docs and Contextual AI.
+
+# --- MCP Servers ---
+
+# Context7: Fetches up-to-date library docs on demand.
+# Ask Codex things like "use context7 to look up the contextual-client Python SDK"
+# and it will pull the latest docs into context.
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
+startup_timeout_sec = 15.0
+tool_timeout_sec = 30.0
