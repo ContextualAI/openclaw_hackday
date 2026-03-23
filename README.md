@@ -60,8 +60,8 @@ You'll need accounts and API keys from the following services before getting sta
 ### 1. Clone the repo
 
 ```bash
-git clone <repo-url>
-cd sec_demo
+git clone https://github.com/saskinosie/sec-openclaw.git
+cd sec-openclaw
 ```
 
 ### 2. Set up API keys
