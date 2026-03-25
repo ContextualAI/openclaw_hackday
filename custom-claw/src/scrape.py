@@ -27,8 +27,9 @@ EDGAR_SEARCH_URL = "https://efts.sec.gov/LATEST/search-index"
 # SEC requires a User-Agent header with contact info
 SEC_USER_AGENT = os.environ.get("SEC_USER_AGENT", "OpenClaw SEC Monitor (demo@example.com)")
 
-# Filing types to scrape from EDGAR
-EDGAR_FILING_TYPES = ["8-K", "10-K", "10-Q", "20-F", "DEF 14A"]
+# Filing types to scrape from EDGAR (limited for workshop demo — just enough to show the pipeline)
+EDGAR_FILING_TYPES = ["8-K"]
+EDGAR_MAX_PER_TYPE = 2
 
 
 def edgar_search(form_type: str, date_from: str = None, count: int = 40) -> list[dict]:
@@ -329,13 +330,13 @@ def run_edgar_scrape():
     skipped = 0
 
     for form_type in EDGAR_FILING_TYPES:
-        print(f"\n--- EDGAR: Fetching {form_type} filings ---")
+        print(f"\n--- EDGAR: Fetching {form_type} filings (max {EDGAR_MAX_PER_TYPE}) ---")
         time.sleep(0.5)  # SEC asks for max 10 requests/sec
 
-        results = search_edgar_rss(form_type, count=40)
+        results = search_edgar_rss(form_type, count=EDGAR_MAX_PER_TYPE)
         print(f"  Found {len(results)} results")
 
-        for filing in results:
+        for filing in results[:EDGAR_MAX_PER_TYPE]:
             url = filing.get("url", "")
             if not url:
                 continue

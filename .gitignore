@@ -26,5 +26,6 @@ Content_Engine_Demo_Package/
 sec_copy_local_database.ipynb
 .claude/
 logs/
+scripts/invited_users.csv
 openclaw-agent/config/
 openclaw-agent/workspace/
